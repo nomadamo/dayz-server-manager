@@ -203,7 +203,7 @@ export class ManagerController {
 
     public async start(): Promise<void> {
 
-        this.configFileHelper.createDefaultConfig();
+        await this.configFileHelper.createDefaultConfig();
 
         if (this.working) {
             this.log.log(LogLevel.DEBUG, `Start called while ${this.started ? 'stopping' : 'starting'}`);
@@ -213,7 +213,7 @@ export class ManagerController {
 
         await this.stop(true);
 
-        const config = this.configWatcher.watch(
+        const config = await this.configWatcher.watch(
             /* istanbul ignore next */
             () => this.reloadConfig(),
         );
@@ -240,10 +240,6 @@ export class ManagerController {
         this.log.log(LogLevel.DEBUG, 'Services are set up');
         try {
 
-            if (!this.skipInit) {
-                await this.initialSetup();
-            }
-
             this.log.log(LogLevel.DEBUG, 'Initial Check done. Starting Init..');
             for (const service of this.getStatefulServices()) {
                 this.log.log(LogLevel.DEBUG, `Starting ${this.getServiceName(service)}..`);
@@ -253,6 +249,10 @@ export class ManagerController {
                     this.log.log(LogLevel.ERROR, `Failed to start service "${this.getServiceName(service)}": ${e?.message}`, e);
                     throw new Error(`Failed to start service "${this.getServiceName(service)}": ${e?.message}`);
                 }
+            }
+
+            if (!this.skipInit) {
+                await this.initialSetup();
             }
         } catch (e) {
             this.log.log(LogLevel.ERROR, `Setup failed: ${e?.message}`, e);

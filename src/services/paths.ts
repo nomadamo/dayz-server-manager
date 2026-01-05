@@ -6,27 +6,34 @@ import { CHILDPROCESSAPI, FSAPI, InjectionTokens } from '../util/apis';
 import { IService } from '../types/service';
 import { LoggerFactory } from './loggerfactory';
 
-export const copySync = (fs: FSAPI, source: string, target: string): void => {
+export const copyAsync = async (fs: FSAPI, source: string, target: string): Promise<void> => {
 
     // src=somedir/test target=tmp -> tmp/test
-    if (fs.lstatSync(source).isDirectory()) {
-        if (!fs.existsSync(target)) {
-            fs.mkdirSync(target, { recursive: true });
+    const stat = await fs.promises.lstat(source);
+    if (stat.isDirectory()) {
+        try {
+            await fs.promises.access(target);
+        } catch {
+            await fs.promises.mkdir(target, { recursive: true });
         }
-        fs.readdirSync(source).forEach((file) => {
+        const files = await fs.promises.readdir(source);
+        for (const file of files) {
             const curSource = path.join(source, file);
             const curTarget = path.join(target, file);
-            if (fs.lstatSync(curSource).isDirectory()) {
-                copySync(fs, curSource, curTarget);
+            const curStat = await fs.promises.lstat(curSource);
+            if (curStat.isDirectory()) {
+                await copyAsync(fs, curSource, curTarget);
             } else {
-                fs.copyFileSync(curSource, curTarget);
+                await fs.promises.copyFile(curSource, curTarget);
             }
-        });
-    } else {
-        if (!fs.existsSync(target)) {
-            fs.mkdirSync(target, { recursive: true });
         }
-        fs.copyFileSync(source, path.join(target, path.basename(source)));
+    } else {
+        try {
+            await fs.promises.access(target);
+        } catch {
+            await fs.promises.mkdir(target, { recursive: true });
+        }
+        await fs.promises.copyFile(source, path.join(target, path.basename(source)));
     }
 };
 
@@ -90,7 +97,9 @@ export class Paths extends IService {
     public async findFilesInDir(dir: string, filter?: RegExp): Promise<string[]> {
         const results: string[] = [];
 
-        if (!this.fs.existsSync(dir)) {
+        try {
+            await this.fs.promises.access(dir);
+        } catch {
             return results;
         }
 
@@ -108,52 +117,56 @@ export class Paths extends IService {
     }
 
     // https://github.com/vercel/pkg/issues/420
-    public copyFromPkg(src: string, dest: string): void {
-        const stat = this.fs.lstatSync(src);
+    public async copyFromPkg(src: string, dest: string): Promise<void> {
+        const stat = await this.fs.promises.lstat(src);
         if (stat.isDirectory()) {
-            const files = this.fs.readdirSync(src);
+            const files = await this.fs.promises.readdir(src);
             for (const file of files) {
                 const fullPath = path.join(src, file);
                 const fullDest = path.join(dest, file);
-                this.copyFromPkg(fullPath, fullDest);
+                await this.copyFromPkg(fullPath, fullDest);
             }
         } else {
-            this.fs.mkdirSync(path.dirname(dest), { recursive: true });
-            const buff = this.fs.readFileSync(src);
-            this.fs.writeFileSync(dest, buff);
+            await this.fs.promises.mkdir(path.dirname(dest), { recursive: true });
+            const buff = await this.fs.promises.readFile(src);
+            await this.fs.promises.writeFile(dest, buff as any);
         }
     }
 
-    public removeLink(target: string): boolean {
+    public async removeLink(target: string): Promise<boolean> {
         if (detectOS() === 'windows') {
             // cmd //c rmdir "$__TARGET_DIR"
-            return (this.childProcess.spawnSync(
-                'cmd',
-                [
-                    '/c',
-                    'rmdir',
-                    '/S',
-                    '/Q',
-                    target,
-                ],
-            ).status === 0);
+            return new Promise<boolean>((resolve) => {
+                const child = this.childProcess.spawn(
+                    'cmd',
+                    [
+                        '/c',
+                        'rmdir',
+                        '/S',
+                        '/Q',
+                        target,
+                    ]
+                );
+                child.on('exit', (code) => resolve(code === 0));
+                child.on('error', () => resolve(false));
+            });
         }
 
         if (detectOS() === 'linux') {
 
             try {
-                const stats = this.fs.statSync(target);
+                const stats = await this.fs.promises.lstat(target);
                 if (stats.isSymbolicLink()) {
-                    this.fs.unlinkSync(target);
+                    await this.fs.promises.unlink(target);
                 } else if (stats.isDirectory()) {
-                    this.fs.rmSync(
+                    await this.fs.promises.rm(
                         target,
                         {
                             recursive: true,
                         },
                     );
                 } else {
-                    this.fs.rmSync(target);
+                    await this.fs.promises.rm(target);
                 }
             } catch {
                 return false;
@@ -165,26 +178,35 @@ export class Paths extends IService {
         return false;
     }
 
-    public linkDirsFromTo(source: string, target: string): boolean {
+    public async linkDirsFromTo(source: string, target: string): Promise<boolean> {
         if (detectOS() === 'windows') {
             // cmd //c mklink //j "$__TARGET_DIR" "$__SOURCE_DIR"
             try {
-                if (this.fs.existsSync(target)) {
-                    if (!this.removeLink(target)) {
+                try {
+                    await this.fs.promises.access(target);
+                    if (!await this.removeLink(target)) {
                         this.log.log(LogLevel.ERROR, 'Could not remove link before creating new one');
                         return false;
                     }
-                }
-                return (this.childProcess.spawnSync(
-                    'cmd',
-                    [
-                        '/c',
-                        'mklink',
-                        '/j',
-                        target,
-                        source,
-                    ],
-                ).status === 0);
+                } catch {}
+                
+                return new Promise<boolean>((resolve) => {
+                    const child = this.childProcess.spawn(
+                        'cmd',
+                        [
+                            '/c',
+                            'mklink',
+                            '/j',
+                            target,
+                            source,
+                        ]
+                    );
+                    child.on('exit', (code) => resolve(code === 0));
+                    child.on('error', (e) => {
+                        this.log.log(LogLevel.ERROR, `Error linking ${source} to ${target}`, e);
+                        resolve(false)
+                    });
+                });
             } catch (e) {
                 this.log.log(LogLevel.ERROR, `Error linking ${source} to ${target}`, e);
                 return false;
@@ -193,13 +215,14 @@ export class Paths extends IService {
 
         if (detectOS() === 'linux') {
             try {
-                if (this.fs.existsSync(target)) {
-                    if (!this.removeLink(target)) {
+                try {
+                    await this.fs.promises.access(target);
+                    if (!await this.removeLink(target)) {
                         this.log.log(LogLevel.ERROR, 'Could not remove link before creating new one');
                         return false;
                     }
-                }
-                this.fs.symlinkSync(source, target);
+                } catch {}
+                await this.fs.promises.symlink(source, target);
                 return true;
             } catch (e) {
                 this.log.log(LogLevel.ERROR, `Error linking ${source} to ${target}`, e);
@@ -212,14 +235,15 @@ export class Paths extends IService {
 
     public async copyDirFromTo(source: string, target: string): Promise<boolean> {
         try {
-            if (this.fs.existsSync(target)) {
-                if (!this.removeLink(target)) {
+            try {
+                await this.fs.promises.access(target);
+                if (!await this.removeLink(target)) {
                     this.log.log(LogLevel.ERROR, 'Could not remove dir before creating new one');
                     return false;
                 }
-            }
+            } catch {}
 
-            copySync(this.fs, source, target);
+            await copyAsync(this.fs, source, target);
 
             return true;
         } catch (e) {

@@ -133,7 +133,7 @@ export class Monitor extends IStatefulService {
     }
 
     private async tick(): Promise<void> {
-        if (this.manager.config.disableServerMonitoring) {
+        if (this.manager.config.disableServerMonitoring || !this.manager.initDone) {
             return;
         }
 
@@ -149,11 +149,14 @@ export class Monitor extends IStatefulService {
             }
 
             // User locked the server manually via file
-            if (needsRestart && this.fs.existsSync(this.lockPath)) {
-                if (!this.manager.config.disableServerLockLogs) {
-                    this.log.log(LogLevel.IMPORTANT, 'Detected manual server lockfile. Skipping server check');
-                }
-                needsRestart = false;
+            if (needsRestart) {
+                try {
+                    await this.fs.promises.access(this.lockPath);
+                    if (!this.manager.config.disableServerLockLogs) {
+                        this.log.log(LogLevel.IMPORTANT, 'Detected manual server lockfile. Skipping server check');
+                    }
+                    needsRestart = false;
+                } catch {}
             }
 
             // restart locked

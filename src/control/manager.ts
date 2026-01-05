@@ -12,7 +12,7 @@ import { ConfigParser } from '../util/config-parser';
 @injectable()
 export class Manager {
 
-    public readonly APP_VERSION: string = 'UNKNOWN';
+    public APP_VERSION: string = 'UNKNOWN';
 
     private log: Logger;
 
@@ -30,11 +30,16 @@ export class Manager {
         this.log = loggerFactory.createLogger('Manager');
         this.initDone = false;
 
+        void this.loadVersion();
+    }
+
+    private async loadVersion(): Promise<void> {
         const versionFilePath = path.join(__dirname, '../VERSION');
-        if (this.fs.existsSync(versionFilePath)) {
-            this.APP_VERSION = this.fs.readFileSync(versionFilePath).toString();
-        }
-        this.log.log(LogLevel.IMPORTANT, `Starting DZSM Version: ${this.APP_VERSION}`);
+        try {
+            await this.fs.promises.access(versionFilePath);
+            this.APP_VERSION = (await this.fs.promises.readFile(versionFilePath)).toString();
+            this.log.log(LogLevel.IMPORTANT, `Starting DZSM Version: ${this.APP_VERSION}`);
+        } catch {}
     }
 
     public set config(config: Config) {
@@ -103,7 +108,7 @@ export class Manager {
             return this.config.serverCfg;
         }
         const cfgPath = path.join(this.getServerPath(), this.config.serverCfgPath);
-        const rawCfg = this.fs.readFileSync(cfgPath) + '';
+        const rawCfg = await this.fs.promises.readFile(cfgPath, { encoding: 'utf-8' });
         return new ConfigParser().cfg2json(rawCfg);
     }
 

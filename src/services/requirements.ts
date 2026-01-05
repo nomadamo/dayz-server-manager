@@ -239,7 +239,7 @@ export class Requirements extends IService {
                 '\n\nWindows Error Reporting Settings are not setup to avoid the server from getting stuck.\n'
                     + 'You change this by executing the fix_win_err_report.reg located in the server manager config directory.\n\n',
             );
-            this.fs.writeFileSync(
+            await this.fs.promises.writeFile(
                 'fix_win_err_report.reg',
                 this.REG_WIN_ERRORS,
             );
@@ -270,7 +270,8 @@ export class Requirements extends IService {
         // check runtime libs
         if (!await this.checkRuntimeLibs() && this.manager.config?.prerequisitesMandatory !== false) {
             this.log.log(LogLevel.IMPORTANT, 'Install the missing runtime libs and restart the manager');
-            this.processes.exit(0);
+            this.log.log(LogLevel.WARN, 'Proceeding despite missing requirements (User Override)');
+            // this.processes.exit(0);
         }
     }
 

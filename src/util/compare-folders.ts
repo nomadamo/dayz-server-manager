@@ -6,7 +6,10 @@ export const sameDirHash = async (
     dir1: string,
     dir2: string,
 ): Promise<boolean> => {
-    if (!fs.existsSync(dir1) || !fs.existsSync(dir2)) {
+    try {
+        await fs.promises.access(dir1);
+        await fs.promises.access(dir2);
+    } catch {
         return false;
     }
 

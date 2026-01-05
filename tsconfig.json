@@ -3,7 +3,7 @@
         "module": "commonjs",
         "declaration": false,
         "outDir": "./dist",
-        "target": "es2015",
+        "target": "es2018",
         "sourceMap": true,
         "emitDecoratorMetadata": true,
         "experimentalDecorators": true,

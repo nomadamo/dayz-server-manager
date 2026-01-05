@@ -65,12 +65,12 @@ export class AuthService {
             },
         ).toPromise();
 
-        if (!resp.ok) {
+        if (!resp?.ok) {
             throw new Error('Login failed');
         }
 
         this.authHeader = auth;
-        this.level = resp.body as UserLevel;
+        this.level = resp!.body as UserLevel;
         if (remember) {
             // eslint-disable-next-line no-undef
             localStorage.setItem(AuthService.AUTH_STORAGE_KEY, auth);

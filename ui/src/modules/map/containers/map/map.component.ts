@@ -92,7 +92,7 @@ export class LayerContainer {
 })
 export class MapComponent implements OnInit, OnDestroy {
 
-    protected onDestroy = new Subject();
+    protected onDestroy = new Subject<void>();
 
     public info?: MapInfo;
     public options?: MapOptions;

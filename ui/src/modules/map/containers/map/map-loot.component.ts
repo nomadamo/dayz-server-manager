@@ -70,7 +70,7 @@ export class MapLootComponent extends MapComponent implements OnInit, OnDestroy 
         // eventspawns
         try {
             const eventSpawns = new EventSpawnsFileWrapper('cfgeventspawns.xml');
-            await eventSpawns.parse(await this.appCommon.fetchMissionFile(eventSpawns.file).toPromise());
+            await eventSpawns.parse(await this.appCommon.fetchMissionFile(eventSpawns.file).toPromise() ?? '');
             this.files.push(eventSpawns);
 
             this.updateEvents(eventSpawns.content);
@@ -85,7 +85,7 @@ export class MapLootComponent extends MapComponent implements OnInit, OnDestroy 
         // mapo grp pos
         try {
             const mapGrpPos = new MapGroupPosFileWrapper('mapgrouppos.xml');
-            await mapGrpPos.parse(await this.appCommon.fetchMissionFile(mapGrpPos.file).toPromise());
+            await mapGrpPos.parse(await this.appCommon.fetchMissionFile(mapGrpPos.file).toPromise() ?? '');
             this.files.push(mapGrpPos);
 
             this.updateMapGrpPos(mapGrpPos.content);

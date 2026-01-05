@@ -27,7 +27,9 @@ export class Backups extends IService {
         await this.fs.promises.mkdir(backups, { recursive: true });
 
         const mpmissions = path.join(this.manager.getServerPath(), 'mpmissions');
-        if (!this.fs.existsSync(mpmissions)) {
+        try {
+            await this.fs.promises.access(mpmissions);
+        } catch {
             this.log.log(LogLevel.WARN, 'Skipping backup because mpmissions folder does not exist');
             return;
         }

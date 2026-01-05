@@ -70,7 +70,7 @@ export class SettingsComponent implements OnInit {
         this.loading = true;
         this.appCommon.fetchManagerConfig().toPromise().then(
             (config) => {
-                this.config = commentJson.parse(config) as any;
+                this.config = commentJson.parse(config ?? '{}') as any;
                 if (this.config.discordChannels?.length) {
                     this.config.discordChannels = this.config.discordChannels.map((x) => {
                         if (typeof x.mode === 'string') {

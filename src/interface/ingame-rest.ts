@@ -60,9 +60,9 @@ export class IngameREST extends IStatefulService {
 
         this.host = this.manager.config.publishIngameApi ? '0.0.0.0' : '127.0.0.1';
 
-        this.fs.mkdirSync(this.manager.getProfilesPath(), { recursive: true });
+        await this.fs.promises.mkdir(this.manager.getProfilesPath(), { recursive: true });
         const ingameConfigPath = path.join(this.manager.getProfilesPath(), 'DZSMApiOptions.json');
-        this.fs.writeFileSync(
+        await this.fs.promises.writeFile(
             ingameConfigPath,
             JSON.stringify({
                 host: this.manager.config.ingameApiHostOverride || `127.0.0.1:${this.port}`,

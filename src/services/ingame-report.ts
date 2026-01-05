@@ -126,19 +126,20 @@ export class IngameReport extends IStatefulService {
         const serverPath = this.manager.getServerPath();
 
         const modsPath = path.join(__dirname, '../mods');
-        const mods = this.fs.readdirSync(modsPath);
+        const mods = await this.fs.promises.readdir(modsPath);
 
         for (const mod of mods) {
             const serverModPath = path.join(serverPath, mod);
-            if (this.fs.existsSync(serverModPath)) {
-                if (!this.paths.removeLink(serverModPath)) {
+            try {
+                await this.fs.promises.access(serverModPath);
+                if (!await this.paths.removeLink(serverModPath)) {
                     this.log.log(LogLevel.ERROR, `Could not remove mod ${mod} before copying new files`);
                     return;
                 }
-            }
+            } catch {}
         }
 
-        this.paths.copyFromPkg(modsPath, serverPath);
+        await this.paths.copyFromPkg(modsPath, serverPath);
 
     }
 

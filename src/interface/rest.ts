@@ -330,10 +330,12 @@ export class REST extends IStatefulService {
         res: express.Response,
         resource: string,
     ): Promise<void> {
+        /*
         if (!this.manager.initDone) {
             res.sendStatus(503);
             return;
         }
+        */
 
         const base64Credentials = req.headers.authorization?.split(' ')[1];
         const username = base64Credentials

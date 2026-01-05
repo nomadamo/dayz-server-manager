@@ -236,7 +236,7 @@ export class TypesComponent implements OnInit {
         // limits
         try {
             const limits = new LimitsFileWrapper('cfglimitsdefinition.xml');
-            await limits.parse(await this.appCommon.fetchMissionFile(limits.file).toPromise());
+            await limits.parse(await this.appCommon.fetchMissionFile(limits.file).toPromise() ?? '');
             this.files.push(limits);
 
             const valuesCol = this.typesColumnDefs.find((x) => x.colId === 'Values');
@@ -317,9 +317,9 @@ export class TypesComponent implements OnInit {
                 new ItemDumpFileWrapper('dzsm-itemdump.json'),
             ];
             const dumpFilesContents = await this.appCommon.fetchProfileFiles(dumpFiles.map((x) => x.file)).toPromise();
-            for (let i = 0; i < dumpFilesContents.length; i++) {
+            for (let i = 0; i < (dumpFilesContents?.length ?? 0); i++) {
                 const file = dumpFiles[i];
-                await file.parse(dumpFilesContents[i]);
+                await file.parse(dumpFilesContents![i]);
 
                 if (file.content) {
                     switch (file.type) {
@@ -407,7 +407,7 @@ export class TypesComponent implements OnInit {
         // economy core + types
         try {
             const core = new CoreFileWrapper('cfgEconomyCore.xml');
-            await core.parse(await this.appCommon.fetchMissionFile(core.file).toPromise());
+            await core.parse(await this.appCommon.fetchMissionFile(core.file).toPromise() ?? '');
             this.files.push(core);
 
             const typesFiles: string[] = ['db/types.xml'];
@@ -430,14 +430,14 @@ export class TypesComponent implements OnInit {
             const typesFilesContents = await this.appCommon.fetchMissionFiles(typesFiles).toPromise();
             for (let i = 0; i < typesFiles.length; i++) {
                 const file = new TypesFileWrapper(typesFiles[i]);
-                await file.parse(typesFilesContents[i]);
+                await file.parse(typesFilesContents?.[i] ?? '');
                 this.files.push(file);
             }
 
             const spawnableTypesFilesContents = await this.appCommon.fetchMissionFiles(spawnableTypesFiles).toPromise();
             for (let i = 0; i < spawnableTypesFiles.length; i++) {
                 const file = new SpawnableTypesFileWrapper(spawnableTypesFiles[i]);
-                await file.parse(spawnableTypesFilesContents[i]);
+                await file.parse(spawnableTypesFilesContents?.[i] ?? '');
                 this.files.push(file);
             }
 
@@ -457,8 +457,8 @@ export class TypesComponent implements OnInit {
                 .map((x) => new TraderFileWrapper(x, x.slice(0, x.lastIndexOf('.'))));
 
             const traderFilesContents = await this.appCommon.fetchProfileFiles(traderFiles.map((x) => x.file)).toPromise();
-            for (let i = 0; i < traderFilesContents.length; i++) {
-                await traderFiles[i].parse(traderFilesContents[i]);
+            for (let i = 0; i < (traderFilesContents?.length ?? 0); i++) {
+                await traderFiles[i].parse(traderFilesContents![i]);
                 if (traderFiles[i].content) {
                     this.files.push(traderFiles[i]);
                 }
@@ -483,7 +483,7 @@ export class TypesComponent implements OnInit {
         try {
             const hardlineFile = new HardlineFileWrapper('expansion/settings/HardlineSettings.json');
             const hardlineContent = await this.appCommon.fetchMissionFile(hardlineFile.file).toPromise().catch();
-            await hardlineFile.parse(hardlineContent);
+            await hardlineFile.parse(hardlineContent ?? '');
             this.hardlineFileIndex = this.files.push(hardlineFile) - 1;
 
             this.typesColumnDefs = [

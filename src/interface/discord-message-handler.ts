@@ -43,7 +43,8 @@ export class DiscordMessageHandler extends IService {
             return;
         }
 
-        const channelName = (message.channel as GuildChannel).name;
+        const channel = message.channel;
+        const channelName = !channel.isDMBased() && 'name' in channel ? (channel as any).name : 'DM';
         const authorId = message.author.id;
         const authorUserName = message.author.username;
 

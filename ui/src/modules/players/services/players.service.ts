@@ -102,7 +102,7 @@ export class PlayersService {
         this.bans = await this.readBanTxt().toPromise().catch(() => []).then((x) => new Set(x));
         this.whitelisted = await this.readWhitelistTxt().toPromise().catch(() => []).then((x) => new Set(x));
         this.priority = await this.readPriorityTxt().toPromise().catch(() => []).then((x) => new Set(x));
-        this.rconBans = await this.readRconBans().toPromise().catch(() => [] as RconBan[]).then((x) => new Map(x.map((y) => [y.id, y])));
+        this.rconBans = await this.readRconBans().toPromise().catch(() => [] as RconBan[]).then((x) => new Map((x ?? []).map((y) => [y.id, y])));
 
         this.knownPlayers.forEach((x) => {
             this.updatePlayerWithIngame({ id2: x.steamid } as any);

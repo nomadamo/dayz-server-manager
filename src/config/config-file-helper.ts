@@ -34,11 +34,13 @@ export class ConfigFileHelper extends IService {
         return path.join(this.paths.cwd(), ConfigFileHelper.CFG_NAME);
     }
 
-    public getConfigFileContent(cfgPath: string): string {
-        if (this.fs.existsSync(cfgPath)) {
-            return this.fs.readFileSync(cfgPath, { encoding: 'utf-8' });
+    public async getConfigFileContent(cfgPath: string): Promise<string> {
+        try {
+            await this.fs.promises.access(cfgPath);
+            return this.fs.promises.readFile(cfgPath, { encoding: 'utf-8' });
+        } catch {
+            throw new Error('Config file does not exist');
         }
-        throw new Error('Config file does not exist');
     }
 
     private logConfigErrors(errors: string[]): void {
@@ -49,12 +51,12 @@ export class ConfigFileHelper extends IService {
         }
     }
 
-    public readConfig(): Config | null {
+    public async readConfig(): Promise<Config | null> {
         let fileContent: string;
         try {
             const cfgPath = this.getConfigFilePath();
             this.log.log(LogLevel.IMPORTANT, `Trying to read config at: ${cfgPath}`);
-            fileContent = this.getConfigFileContent(cfgPath);
+            fileContent = await this.getConfigFileContent(cfgPath);
 
             // apply defaults
             const parsed = commentJson.assign(
@@ -77,10 +79,10 @@ export class ConfigFileHelper extends IService {
         }
     }
 
-    public writeConfig(newConfig: string): void {
+    public async writeConfig(newConfig: string): Promise<void> {
         // apply defaults
         const config = commentJson.assign(
-            this.readConfig() || commentJson.parse(generateConfigTemplate(configschema)) as any as Config,
+            (await this.readConfig()) || commentJson.parse(generateConfigTemplate(configschema)) as any as Config,
             commentJson.parse(newConfig) as any as Config,
         );
 
@@ -90,7 +92,7 @@ export class ConfigFileHelper extends IService {
         }
 
         try {
-            this.fs.writeFileSync(
+            await this.fs.promises.writeFile(
                 this.getConfigFilePath(),
                 commentJson.stringify(config, null, 2),
             );
@@ -99,11 +101,13 @@ export class ConfigFileHelper extends IService {
         }
     }
 
-    public createDefaultConfig(): void {
+    public async createDefaultConfig(): Promise<void> {
 
         const cfgPath = this.getConfigFilePath();
 
-        if (!this.fs.existsSync(cfgPath)) {
+        try {
+            await this.fs.promises.access(cfgPath);
+        } catch {
             const defaultConfig = commentJson.parse(generateConfigTemplate(configschema)) as any as Config;
 
             // apply safe defaults
@@ -117,7 +121,7 @@ export class ConfigFileHelper extends IService {
                 defaultConfig.serverExe = 'DayZServer';
             }
 
-            this.fs.writeFileSync(
+            await this.fs.promises.writeFile(
                 cfgPath,
                 commentJson.stringify(defaultConfig, null, 2),
             );

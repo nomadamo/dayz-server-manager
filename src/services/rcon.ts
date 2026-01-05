@@ -168,7 +168,7 @@ export class Packet extends IPacketAttributes {
 
         this.sent = this.sent ? this.sent + 1 : 1
 
-        return Buffer.concat([header, payload], header.length + payload.length)
+        return Buffer.concat([header, payload], header.length + payload.length) as any
     }
 }
 
@@ -389,7 +389,7 @@ export class RCON extends IStatefulService {
         return this.manager.config?.rconIP || '127.0.0.1';
     }
 
-    public createBattleyeConf(): void {
+    public async createBattleyeConf(): Promise<void> {
         let battleyePath = this.manager.config?.battleyePath;
         if (!battleyePath) {
             battleyePath = 'battleye';
@@ -420,16 +420,17 @@ export class RCON extends IStatefulService {
         const rConPort = this.getRconPort();
         const rConIP = this.getRconIP();
 
-        this.fs.mkdirSync(battleyePath, { recursive: true });
+        await this.fs.promises.mkdir(battleyePath, { recursive: true });
         try {
-            this.fs.readdirSync(battleyePath).forEach((x) => {
+            const files = await this.fs.promises.readdir(battleyePath);
+            for (const x of files) {
                 const lower = x.toLowerCase();
                 if (lower.includes('beserver') && lower.endsWith('.cfg')) {
-                    this.fs.unlinkSync(path.join(battleyePath, x));
+                    await this.fs.promises.unlink(path.join(battleyePath, x));
                 }
-            });
+            }
         } catch {}
-        this.fs.writeFileSync(
+        await this.fs.promises.writeFile(
             battleyeConfPath,
             [
                 `RConPassword ${rConPassword}`,
@@ -575,7 +576,7 @@ export class RCON extends IStatefulService {
         }
         try {
             const buf = packet.serialize();
-            this.socket.send(buf, 0, buf.length, this.getRconPort(), this.getRconIP())
+            this.socket.send(buf as any, 0, buf.length, this.getRconPort(), this.getRconIP())
             if (this.packetDebug) {
                 this.log.log(LogLevel.DEBUG, 'Sent', packet);
             }
@@ -687,7 +688,7 @@ export class RCON extends IStatefulService {
                 this.multipart[packet.sequence] = [];
                 try {
                     const buff = Buffer.concat(
-                        parts.map((x) => x.part),
+                        parts.map((x) => x.part) as any,
                         parts.reduce((prev, cur) => prev + cur.part.length, 0),
                     );
                     packet = new Packet(
@@ -804,14 +805,16 @@ export class RCON extends IStatefulService {
         return hash.toString();
     }
 
-    private readGuidFile(file: string): ({ lines: string[]; linefeed: string }) {
-        if (!this.fs.existsSync(file)) {
+    private async readGuidFile(file: string): Promise<{ lines: string[]; linefeed: string }> {
+        try {
+            await this.fs.promises.access(file);
+        } catch {
             return {
                 linefeed: '\r\n',
                 lines: [],
             };
         }
-        const content = this.fs.readFileSync(
+        const content = await this.fs.promises.readFile(
             file,
             { encoding: 'utf-8' },
         );
@@ -822,75 +825,76 @@ export class RCON extends IStatefulService {
         };
     }
 
-    private removeGuidFromFile(steamId: string, file: string): void {
+    private async removeGuidFromFile(steamId: string, file: string): Promise<void> {
         if (!steamId || !(steamId.length === 17 || steamId.length === 44)) return;
         steamId = steamId.length === 17 ? this.steam64ToDayZID(steamId) : steamId;
         const baseDir = this.manager.getServerPath();
         const filePath = path.join(baseDir, file);
-        const content = this.readGuidFile(filePath);
+        const content = await this.readGuidFile(filePath);
         content.lines = content.lines.filter((x) => !x.trim().startsWith(steamId));
-        this.fs.writeFileSync(
+        await this.fs.promises.writeFile(
             filePath,
             content.lines.join(content.linefeed),
         );
     }
 
-    private readGuidsFromFile(file: string): string[] {
+    private async readGuidsFromFile(file: string): Promise<string[]> {
         const baseDir = this.manager.getServerPath();
         const filePath = path.join(baseDir, file);
-        const content = this.readGuidFile(filePath);
+        const content = await this.readGuidFile(filePath);
         return content.lines
             .map((x) => x.trim())
             .filter((x) => !!x && !x.startsWith('//'))
             .map((x) => x.includes('//') ? x.slice(0, x.indexOf('//')).trim() : x);
     }
 
-    private addGuidToFile(steamId: string, file: string): void {
+    private async addGuidToFile(steamId: string, file: string): Promise<void> {
         if (!steamId) return;
         if (steamId.length !== 17 && steamId.length !== 44) return;
         steamId = steamId.length === 17 ? this.steam64ToDayZID(steamId) : steamId;
         const baseDir = this.manager.getServerPath();
         const filePath = path.join(baseDir, file);
-        const content = this.readGuidFile(filePath);
+        const content = await this.readGuidFile(filePath);
         if (!content.lines.some((x) => x.trim().startsWith(steamId))) {
             content.lines.push(steamId);
-            this.fs.writeFileSync(
+            await this.fs.promises.writeFile(
                 filePath,
                 content.lines.join(content.linefeed),
             );
         }
     }
 
-    public readBanTxt(): string[] {
+    public async readBanTxt(): Promise<string[]> {
         return this.readGuidsFromFile('ban.txt');
     }
 
-    public banTxt(steamId: string): void {
-        this.addGuidToFile(steamId, 'ban.txt');
+    public async banTxt(steamId: string): Promise<void> {
+        await this.addGuidToFile(steamId, 'ban.txt');
     }
 
-    public unbanTxt(steamId: string): void {
-        this.removeGuidFromFile(steamId, 'ban.txt');
+    public async unbanTxt(steamId: string): Promise<void> {
+        await this.removeGuidFromFile(steamId, 'ban.txt');
     }
 
-    public readWhitelistTxt(): string[] {
+    public async readWhitelistTxt(): Promise<string[]> {
         return this.readGuidsFromFile('whitelist.txt');
     }
 
-    public whitelistTxt(steamId: string): void {
-        this.addGuidToFile(steamId, 'whitelist.txt');
+    public async whitelistTxt(steamId: string): Promise<void> {
+        await this.addGuidToFile(steamId, 'whitelist.txt');
     }
 
-    public unwhitelistTxt(steamId: string): void {
-        this.removeGuidFromFile(steamId, 'whitelist.txt');
+    public async unwhitelistTxt(steamId: string): Promise<void> {
+        await this.removeGuidFromFile(steamId, 'whitelist.txt');
     }
 
-    public readPriorityTxt(): string[] {
+    public async readPriorityTxt(): Promise<string[]> {
         const baseDir = this.manager.getServerPath();
         const filePath = path.join(baseDir, 'priority.txt');
         const guids = new Set<string>();
-        if (this.fs.existsSync(filePath)) {
-            const content = this.readGuidFile(filePath);
+        try {
+            await this.fs.promises.access(filePath);
+            const content = await this.readGuidFile(filePath);
             for (const line of content.lines) {
                 const lineGuids = line
                     .split(';')
@@ -900,28 +904,28 @@ export class RCON extends IStatefulService {
                     guids.add(guid);
                 }
             }
-        }
+        } catch {}
         return [...guids.values()];
     }
 
-    public priorityTxt(steamId: string): void {
+    public async priorityTxt(steamId: string): Promise<void> {
         if (!steamId || steamId.length !== 17) return;
         const baseDir = this.manager.getServerPath();
         const filePath = path.join(baseDir, 'priority.txt');
-        const guids = this.readPriorityTxt();
+        const guids = await this.readPriorityTxt();
         guids.push(steamId);
-        this.fs.writeFileSync(
+        await this.fs.promises.writeFile(
             filePath,
             guids.join(';'),
         );
     }
 
-    public unpriorityTxt(steamId: string): void {
+    public async unpriorityTxt(steamId: string): Promise<void> {
         if (!steamId || steamId.length !== 17) return;
         const baseDir = this.manager.getServerPath();
         const filePath = path.join(baseDir, 'priority.txt');
-        const guids = this.readPriorityTxt();
-        this.fs.writeFileSync(
+        const guids = await this.readPriorityTxt();
+        await this.fs.promises.writeFile(
             filePath,
             guids.filter((x) => x !== steamId).join(';'),
         );

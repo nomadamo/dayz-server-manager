@@ -31,10 +31,10 @@ export class ConfigWatcher extends IService {
         super(loggerFactory.createLogger('ConfigWatcher'));
     }
 
-    public watch(cb: ConfigCallback): Config {
+    public async watch(cb: ConfigCallback): Promise<Config> {
         const cfgPath = this.configFileHelper.getConfigFilePath();
 
-        const config = this.configFileHelper.readConfig();
+        const config = await this.configFileHelper.readConfig();
         if (!config) {
             throw new Error(`Config missing or invalid`);
         }
@@ -54,17 +54,17 @@ export class ConfigWatcher extends IService {
                 // waiting a small amount of time prevents reading RBW errors
                 await new Promise((r) => setTimeout(r, this.changeDetectionDelay));
 
-                this.checkForChange(cb);
+                await this.checkForChange(cb);
             },
         );
 
         return config;
     }
 
-    public checkForChange(cb: ConfigCallback): void {
+    public async checkForChange(cb: ConfigCallback): Promise<void> {
         this.log.log(LogLevel.INFO, 'Detected config file change...');
 
-        const updatedConfig = this.configFileHelper.readConfig();
+        const updatedConfig = await this.configFileHelper.readConfig();
         if (!updatedConfig) {
             this.log.log(LogLevel.ERROR, 'Cannot reload config because config is missing or contains errors');
             return;

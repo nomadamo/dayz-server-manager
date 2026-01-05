@@ -2,7 +2,8 @@ import {
     TextChannel,
     Client,
     Message,
-    Intents,
+    GatewayIntentBits,
+    Partials,
 } from 'discord.js';
 import { DiscordMessageHandler } from '../interface/discord-message-handler';
 import { IStatefulService } from '../types/service';
@@ -47,12 +48,19 @@ export class DiscordBot extends IStatefulService {
         }
 
         try {
-            const client = new Client({ intents: [
-                Intents.FLAGS.GUILDS,
-                Intents.FLAGS.GUILD_MESSAGES,
-                Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
-                Intents.FLAGS.MESSAGE_CONTENT,
-            ] });
+            const client = new Client({
+                intents: [
+                    GatewayIntentBits.Guilds,
+                    GatewayIntentBits.GuildMessages,
+                    GatewayIntentBits.GuildMessageReactions,
+                    GatewayIntentBits.MessageContent,
+                ],
+                partials: [
+                    Partials.Message,
+                    Partials.Channel,
+                    Partials.Reaction,
+                ],
+            });
             client.on('ready', (c) => {
                 this.onReady();
             });

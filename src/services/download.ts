@@ -13,15 +13,15 @@ export class Downloader {
         @inject(InjectionTokens.https) private http: HTTPSAPI,
     ) {}
 
-    public download(
+    public async download(
         url: string,
         target: string,
     ): Promise<void> {
+        const dirname = path.dirname(target);
+        await this.fs.promises.mkdir(dirname, { recursive: true });
+
         return new Promise<void>((res, rej) => {
             try {
-                const dirname = path.dirname(target);
-                this.fs.mkdirSync(dirname, { recursive: true });
-
                 const file = this.fs.createWriteStream(target);
                 this.http.get(
                     url,
@@ -32,7 +32,9 @@ export class Downloader {
                             res();
                         });
                     },
-                );
+                ).on('error', (e) => {
+                    rej(e);
+                });
             } catch (e) {
                 rej(e);
             }

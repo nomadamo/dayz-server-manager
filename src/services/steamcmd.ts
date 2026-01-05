@@ -43,30 +43,32 @@ export class SteamMetaData extends IService {
         return metaFolder;
     }
 
-    public readLocalMeta(modId: string): LocalMetaData {
+    public async readLocalMeta(modId: string): Promise<LocalMetaData> {
         const metaPath = path.join(this.getMetaDataPath(), `${modId}.json`);
-        if (!this.fs.existsSync(metaPath)) {
+        try {
+            await this.fs.promises.access(metaPath);
+        } catch {
             return {};
         }
         try {
             return JSON.parse(
-                this.fs.readFileSync(metaPath, { encoding: 'utf-8' }),
+                await this.fs.promises.readFile(metaPath, { encoding: 'utf-8' }),
             );
         } catch {}
         return {};
     }
 
-    public writeLocalMeta(modId: string, data: LocalMetaData): void {
-        this.fs.mkdirSync(this.getMetaDataPath(), { recursive: true });
+    public async writeLocalMeta(modId: string, data: LocalMetaData): Promise<void> {
+        await this.fs.promises.mkdir(this.getMetaDataPath(), { recursive: true });
         const modMetaPath = path.join(this.getMetaDataPath(), `${modId}.json`);
-        this.fs.writeFileSync(modMetaPath, JSON.stringify(data));
+        await this.fs.promises.writeFile(modMetaPath, JSON.stringify(data));
     }
 
-    public updateLocalModMeta(modId: string, update: LocalMetaData): void {
-        this.writeLocalMeta(
+    public async updateLocalModMeta(modId: string, update: LocalMetaData): Promise<void> {
+        await this.writeLocalMeta(
             modId,
             merge(
-                this.readLocalMeta(modId),
+                await this.readLocalMeta(modId),
                 update,
             ),
         );
@@ -74,8 +76,8 @@ export class SteamMetaData extends IService {
 
     public async modNeedsUpdate(modIds: string[]): Promise<string[]> {
         const remoteList = await this.getModsMetaData(modIds);
-        return modIds.filter((modId) => {
-            const local = this.readLocalMeta(modId)?.lastDownloaded;
+        const results = await Promise.all(modIds.map(async (modId) => {
+            const local = (await this.readLocalMeta(modId))?.lastDownloaded;
             if (!local || !Number(local)) {
                 return true;
             }
@@ -83,7 +85,8 @@ export class SteamMetaData extends IService {
             const remoteTime = Number(remote?.time_updated || remote?.time_created || 0);
             const localTime = Math.round(Number(local) / 1000);
             return !remoteTime || localTime <= remoteTime;
-        });
+        }));
+        return modIds.filter((_, i) => results[i]);
     }
 
     public async getModsMetaData(modIds: string[]): Promise<PublishedFileDetail[]> {
@@ -544,13 +547,15 @@ export class SteamCMD extends IService {
         return path.join(this.getWsBasePath(), 'steamapps/workshop/content', DAYZ_APP_ID);
     }
 
-    public getWsModName(modId: string): string {
+    public async getWsModName(modId: string): Promise<string> {
         const wsPath = this.getWsPath();
         const modMeta = path.join(wsPath, modId, 'meta.cpp');
-        if (!this.fs.existsSync(modMeta)) {
+        try {
+            await this.fs.promises.access(modMeta);
+        } catch {
             return '';
         }
-        const metaContent = this.fs.readFileSync(modMeta).toString();
+        const metaContent = (await this.fs.promises.readFile(modMeta)).toString();
         const names = metaContent.match(/name\s*=.*/g) ?? [];
         let modName = names
             .pop()
@@ -572,7 +577,9 @@ export class SteamCMD extends IService {
     public async getWsModUpdatedTs(modId: string): Promise<string> {
         const wsPath = this.getWsPath();
         const modMeta = path.join(wsPath, modId, 'meta.cpp');
-        if (!this.fs.existsSync(modMeta)) {
+        try {
+            await this.fs.promises.access(modMeta);
+        } catch {
             return '';
         }
         const metaContent = await this.fs.promises.readFile(modMeta, { encoding: 'utf-8' });
@@ -584,14 +591,16 @@ export class SteamCMD extends IService {
             ?.replace(';', '') || '';
     }
 
-    public buildWsModParams(): string[] {
-        return this.manager.getModIdList()
-            .map((x) => this.getWsModName(x));
+    public async buildWsModParams(): Promise<string[]> {
+        return Promise.all(
+            this.manager.getModIdList().map((x) => this.getWsModName(x))
+        );
     }
 
-    public buildWsServerModParams(): string[] {
-        return this.manager.getServerModIdList()
-            .map((x) => this.getWsModName(x));
+    public async buildWsServerModParams(): Promise<string[]> {
+        return Promise.all(
+            this.manager.getServerModIdList().map((x) => this.getWsModName(x))
+        );
     }
 
     public async updateMod(
@@ -748,26 +757,32 @@ export class SteamCMD extends IService {
         if (opts?.force) {
             modIds.push(...this.manager.getCombinedModIdList());
         } else {
-            modIds.push(...new Set([
-                ...(await this.metaData.modNeedsUpdate(
-                    this.manager.getCombinedModIdList(),
-                )),
-                ...this.manager.getCombinedModIdList().filter((modId) => {
-                    const modDir = path.join(this.getWsPath(), modId);
-                    if (!this.fs.existsSync(modDir)) {
-                        return true;
-                    }
-                    const modName = this.getWsModName(modId);
-                    if (!modName) {
-                        return true;
-                    }
-                    const serverDir = path.join(this.manager.getServerPath(), modName);
-                    if (!this.fs.existsSync(serverDir)) {
-                        return true;
-                    }
-                    return false;
-                }),
-            ]));
+            const updates = await this.metaData.modNeedsUpdate(
+                this.manager.getCombinedModIdList(),
+            );
+            const missing = [];
+            for (const modId of this.manager.getCombinedModIdList()) {
+                const modDir = path.join(this.getWsPath(), modId);
+                try {
+                    await this.fs.promises.access(modDir);
+                } catch {
+                    missing.push(modId);
+                    continue;
+                }
+                const modName = await this.getWsModName(modId);
+                if (!modName) {
+                    missing.push(modId);
+                    continue;
+                }
+                const serverDir = path.join(this.manager.getServerPath(), modName);
+                try {
+                    await this.fs.promises.access(serverDir);
+                } catch {
+                    missing.push(modId);
+                    continue;
+                }
+            }
+            modIds.push(...new Set([...updates, ...missing]));
         }
 
         const modsMeta = (await this.metaData.getModsMetaData(modIds)) || [];
@@ -851,7 +866,7 @@ export class SteamCMD extends IService {
     }
 
     public async installMod(modId: string): Promise<boolean> {
-        const modName = this.getWsModName(modId);
+        const modName = await this.getWsModName(modId);
         if (!modName) {
             return false;
         }
@@ -955,7 +970,7 @@ export class SteamCMD extends IService {
 
     private async copyModKeys(modId: string): Promise<boolean> {
         const keysFolder = path.join(this.manager.getServerPath(), 'keys');
-        const modName = this.getWsModName(modId);
+        const modName = await this.getWsModName(modId);
         const modDir = path.join(this.getWsPath(), modId);
         this.log.log(LogLevel.DEBUG, `Searching keys for ${modName}`);
         const keys = await this.paths.findFilesInDir(modDir, /.*\.bikey/);
@@ -963,9 +978,10 @@ export class SteamCMD extends IService {
             const keyName = path.basename(key);
             this.log.log(LogLevel.INFO, `Copying ${modName} key ${keyName}`);
             const target = path.join(keysFolder, keyName);
-            if (this.fs.existsSync(target)) {
-                this.fs.unlinkSync(target);
-            }
+            try {
+                await this.fs.promises.access(target);
+                await this.fs.promises.unlink(target);
+            } catch { /* file does not exist */ }
             await this.fs.promises.copyFile(key, target);
         }
         return true;
@@ -973,28 +989,33 @@ export class SteamCMD extends IService {
 
     public async checkMods(): Promise<boolean> {
         const wsPath = this.getWsPath();
-        return this.manager.getCombinedModIdList()
-            .every((modId) => {
-                const modDir = path.join(wsPath, modId);
-                if (!this.fs.existsSync(modDir)) {
-                    this.log.log(LogLevel.ERROR, `Mod ${modId} was not found`);
-                    return false;
-                }
+        const modIds = this.manager.getCombinedModIdList();
 
-                const modName = this.getWsModName(modId);
-                if (!modName) {
-                    this.log.log(LogLevel.ERROR, `Modname for ${modId} was not found`);
-                    return false;
-                }
+        for (const modId of modIds) {
+            const modDir = path.join(wsPath, modId);
+            try {
+                await this.fs.promises.access(modDir);
+            } catch {
+                this.log.log(LogLevel.ERROR, `Mod ${modId} was not found`);
+                return false;
+            }
 
-                const modServerDir = path.join(this.manager.getServerPath(), modName);
-                if (!this.fs.existsSync(modServerDir)) {
-                    this.log.log(LogLevel.ERROR, `Mod Link/Folder for ${modName} in serverfolder was not found`);
-                    return false;
-                }
+            const modName = await this.getWsModName(modId);
+            if (!modName) {
+                this.log.log(LogLevel.ERROR, `Modname for ${modId} was not found`);
+                return false;
+            }
 
-                return true;
-            });
+            const modServerDir = path.join(this.manager.getServerPath(), modName);
+            try {
+                await this.fs.promises.access(modServerDir);
+            } catch {
+                this.log.log(LogLevel.ERROR, `Mod Link/Folder for ${modName} in serverfolder was not found`);
+                return false;
+            }
+        }
+
+        return true;
     }
 
 }

@@ -16,8 +16,8 @@ export class MaintenanceService {
     ) {
     }
 
-    public execute(action: string, body?: any): Promise<boolean> {
-        return this.httpClient.post(
+    public async execute(action: string, body?: any): Promise<boolean> {
+        const result = await this.httpClient.post(
             `/api/${action}`,
             body,
             {
@@ -32,6 +32,7 @@ export class MaintenanceService {
             }),
             catchError((e) => {console.log(e); return of(false)}),
         ).toPromise();
+        return result ?? false;
     }
 
     public async updateServer(validate?: boolean): Promise<boolean> {

@@ -8,7 +8,7 @@ import { Manager } from "../control/manager";
 import { EventBus } from "../control/event-bus";
 import { InternalEventTypes } from "../types/events";
 import { SteamMetaData } from "./steamcmd";
-import { MessageEmbed } from "discord.js";
+import { EmbedBuilder } from "discord.js";
 import { GameUpdatedStatus, ModUpdatedStatus } from "../types/steamcmd";
 import { ServerState } from "../types/monitor";
 import { LogLevel } from "../util/logger";
@@ -104,27 +104,28 @@ export class DiscordEventConverter extends IService {
                                     inline: true,
                                 });
                             }
-                            const embed = new MessageEmbed({
-                                color: 0x0099FF,
-                                title: `Successfully updated: ${modInfo.title}`,
-                                url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${modInfo.publishedfileid}`,
-                                fields,
-                                thumbnail: { url: modInfo.preview_url || undefined },
-                                image: { url: modInfo.preview_url || undefined },
-                                footer: {
+                            const embed = new EmbedBuilder()
+                                .setColor(0x0099FF)
+                                .setTitle(`Successfully updated: ${modInfo.title}`)
+                                .setURL(`https://steamcommunity.com/sharedfiles/filedetails/?id=${modInfo.publishedfileid}`)
+                                .addFields(fields)
+                                .setFooter({
                                     text: 'Powered by DayZ Server Manager',
-                                },
-                            });
+                                });
+
+                            if (modInfo.preview_url) {
+                                embed.setThumbnail(modInfo.preview_url);
+                                embed.setImage(modInfo.preview_url);
+                            }
                             return embed;
                         } else if (typeof modInfo === 'string') {
-                            return new MessageEmbed({
-                                color: 0x0099FF,
-                                title: `Successfully updated: ${modInfo}`,
-                                url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${modInfo}`,
-                                footer: {
+                            return new EmbedBuilder()
+                                .setColor(0x0099FF)
+                                .setTitle(`Successfully updated: ${modInfo}`)
+                                .setURL(`https://steamcommunity.com/sharedfiles/filedetails/?id=${modInfo}`)
+                                .setFooter({
                                     text: 'Powered by DayZ Server Manager',
-                                },
-                            });
+                                });
                         }
                         return null;
                     })

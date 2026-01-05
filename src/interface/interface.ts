@@ -263,9 +263,9 @@ export class Interface extends IService {
                 level: 'admin',
                 disableDiscord: true,
                 params: [{ name: 'config' }],
-                action: (req, params) => {
+                action: async (req, params) => {
                     try {
-                        this.configFileHelper.writeConfig(params.config);
+                        await this.configFileHelper.writeConfig(params.config);
                         return true;
                     } catch (e) {
                         throw new Response(HTTP.HTTP_STATUS_BAD_REQUEST, e);
@@ -475,7 +475,8 @@ export class Interface extends IService {
     // apply Init Lock
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private async actionInitCheck(req: Request): Promise<Response | null> {
-        if (!this.manager.initDone) {
+        const allowedDuringInit = ['login', 'logs', 'serverinfo', 'version', 'config'];
+        if (!this.manager.initDone && !allowedDuringInit.includes(req.resource)) {
             return new Response(
                 HTTP.HTTP_STATUS_LOCKED,
                 'The ServerManager is currently starting...',

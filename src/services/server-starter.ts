@@ -74,7 +74,7 @@ export class ServerStarter extends IService {
             const content = new ConfigParser().json2cfg(this.manager.config.serverCfg);
 
             this.log.log(LogLevel.INFO, `Writing server cfg`);
-            this.fs.writeFileSync(cfgPath, content);
+            await this.fs.promises.writeFile(cfgPath, content);
         } else {
             this.log.log(LogLevel.INFO, `Skipping to write server cfg because it is not configured`);
         }
@@ -82,8 +82,9 @@ export class ServerStarter extends IService {
 
     public async adjustDayzSettingXml(): Promise<void> {
         const settingPath = path.join(this.manager.getServerPath(), 'dayzsetting.xml');
-        if (this.fs.existsSync(settingPath)) {
-            let content = this.fs.readFileSync(settingPath, { encoding: 'utf-8' });
+        try {
+            await this.fs.promises.access(settingPath);
+            let content = await this.fs.promises.readFile(settingPath, { encoding: 'utf-8' });
             if (!content) return;
 
             const globalQueue = this.manager.config.dayzsettingglobalqueue || 4096;
@@ -99,8 +100,8 @@ export class ServerStarter extends IService {
             content = content.replace(/reservedcores="\d+"/g, `reservedcores="${reservedcores}"`);
 
             this.log.log(LogLevel.INFO, `Adjusting dayzsetting.xml`);
-            this.fs.writeFileSync(settingPath, content);
-        }
+            await this.fs.promises.writeFile(settingPath, content);
+        } catch {}
     }
 
     private async prepareServerStart(skipPrep?: boolean): Promise<void> {
@@ -169,7 +170,7 @@ export class ServerStarter extends IService {
             `-profiles=${this.manager.config.profilesPath}`,
         ];
         const modList = [
-            ...(this.steamCmd.buildWsModParams() ?? []),
+            ...(await this.steamCmd.buildWsModParams() ?? []),
             ...(this.manager.config.localMods ?? []),
         ].filter((x) => !!x);
         if (modList?.length) {
@@ -185,7 +186,7 @@ export class ServerStarter extends IService {
                 )
             ).flat(),
             ...(this.manager.config.serverMods ?? []),
-            ...(this.steamCmd.buildWsServerModParams() ?? []),
+            ...(await this.steamCmd.buildWsServerModParams() ?? []),
         ].filter(/* istanbul ignore next */ (x) => !!x);
 
         if (serverMods.length) {
