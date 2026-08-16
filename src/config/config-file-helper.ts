@@ -83,7 +83,16 @@ export class ConfigFileHelper extends IService {
         }
     }
 
-    public async readConfig(): Promise<Config | null> {
+    /**
+     * @param persistSharedMerge When true and a shared config was actually merged in,
+     * writes the merged result back to server-manager.json - so the Settings page
+     * (which edits/displays that file directly) shows the real values actually in use,
+     * not stale ones from before the last merge. Only pass true from a one-time boot
+     * read, never from the config-watcher's reload path: writing here changes the
+     * file's mtime, which the watcher also watches, and doing it on every reload would
+     * self-trigger another reload indefinitely.
+     */
+    public async readConfig(persistSharedMerge = false): Promise<Config | null> {
         let fileContent: string;
         try {
             const cfgPath = this.getConfigFilePath();
@@ -103,6 +112,17 @@ export class ConfigFileHelper extends IService {
             if (shared) {
                 parsed = commentJson.assign(parsed, shared);
                 this.log.log(LogLevel.IMPORTANT, 'Merged shared config from ServerZ');
+
+                if (persistSharedMerge) {
+                    try {
+                        await this.fs.promises.writeFile(
+                            cfgPath,
+                            commentJson.stringify(parsed, null, 2),
+                        );
+                    } catch (e) {
+                        this.log.log(LogLevel.WARN, `Failed to persist merged config to ${cfgPath} (in-memory config is still correct): ${e.message}`, e);
+                    }
+                }
             }
 
             const configErrors = validateConfig(parsed);

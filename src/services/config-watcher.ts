@@ -39,7 +39,10 @@ export class ConfigWatcher extends IService {
         const sharedCfgPath = process.env.SERVERZ_SHARED_CONFIG_PATH;
         const watchPaths = sharedCfgPath ? [cfgPath, sharedCfgPath] : [cfgPath];
 
-        const config = await this.configFileHelper.readConfig();
+        // persistSharedMerge: true only here - this is the one-time boot read, safe to
+        // write back. checkForChange()'s reload path below deliberately doesn't, to
+        // avoid self-triggering another reload off its own write.
+        const config = await this.configFileHelper.readConfig(true);
         if (!config) {
             throw new Error(`Config missing or invalid`);
         }

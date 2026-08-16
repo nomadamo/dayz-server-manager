@@ -68,7 +68,39 @@ export class MissionFiles extends IService {
         if (!filePath) {
             return null;
         }
-        return String(await this.fs.promises.readFile(filePath, { encoding: 'utf-8' }));
+        const resolvedPath = await this.resolveExistingCase(filePath);
+        return String(await this.fs.promises.readFile(resolvedPath, { encoding: 'utf-8' }));
+    }
+
+    /**
+     * DayZ mission files are frequently lowercased on disk on Linux (case-sensitive
+     * filesystem) even though requests here use the traditional Windows-convention
+     * mixed case, e.g. "cfgEconomyCore.xml" when the real file is
+     * "cfgeconomycore.xml". Tries a case-insensitive match in the same directory
+     * before giving up, so a genuinely missing file still throws its normal ENOENT
+     * from the caller's fs.promises.readFile - this only fixes case, not absence.
+     */
+    private async resolveExistingCase(filePath: string): Promise<string> {
+        try {
+            await this.fs.promises.access(filePath);
+            return filePath;
+        } catch {
+            // fall through to case-insensitive search below
+        }
+
+        try {
+            const dir = path.dirname(filePath);
+            const target = path.basename(filePath).toLowerCase();
+            const entries = await this.fs.promises.readdir(dir);
+            const match = entries.find((entry) => entry.toLowerCase() === target);
+            if (match) {
+                return path.join(dir, match);
+            }
+        } catch {
+            // directory itself doesn't exist either - fall through
+        }
+
+        return filePath;
     }
 
     public async readMissionFile(file: string): Promise<string> {
@@ -115,8 +147,13 @@ export class MissionFiles extends IService {
         if (createBackup) {
             await this.backup.createBackup();
         }
-        await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-        await this.fs.promises.writeFile(filePath, content);
+        // Resolve to the file's actual on-disk casing first - otherwise saving an
+        // edit to e.g. "cfgEconomyCore.xml" would create a new file alongside the
+        // real "cfgeconomycore.xml" rather than updating it, and the game (which
+        // reads the original) would never see the edit.
+        const resolvedPath = await this.resolveExistingCase(filePath);
+        await this.fs.promises.mkdir(path.dirname(resolvedPath), { recursive: true });
+        await this.fs.promises.writeFile(resolvedPath, content);
 
         await this.hooks.executeHooks(HookTypeEnum.missionChanged);
     }
