@@ -51,6 +51,38 @@ export class ConfigFileHelper extends IService {
         }
     }
 
+    /**
+     * Path to ServerZ's generated shared-config.json (rcon creds, paths, serverCfg block),
+     * set by ServerZ when it spawns this process. When unset (i.e. not running as a
+     * ServerZ child), no merge happens - server-manager.json alone is authoritative,
+     * same as before.
+     */
+    private getSharedConfigPath(): string | undefined {
+        return process.env.SERVERZ_SHARED_CONFIG_PATH || undefined;
+    }
+
+    private async readSharedConfig(): Promise<Partial<Config> | null> {
+        const sharedPath = this.getSharedConfigPath();
+        if (!sharedPath) {
+            return null;
+        }
+
+        try {
+            await this.fs.promises.access(sharedPath);
+        } catch {
+            this.log.log(LogLevel.WARN, `SERVERZ_SHARED_CONFIG_PATH is set to "${sharedPath}", but the file was not found. Skipping shared config merge.`);
+            return null;
+        }
+
+        try {
+            const content = await this.fs.promises.readFile(sharedPath, { encoding: 'utf-8' });
+            return commentJson.parse(content) as any as Partial<Config>;
+        } catch (e) {
+            this.log.log(LogLevel.ERROR, `Failed to read/parse shared config at "${sharedPath}": ${e.message}`, e);
+            return null;
+        }
+    }
+
     public async readConfig(): Promise<Config | null> {
         let fileContent: string;
         try {
@@ -58,11 +90,21 @@ export class ConfigFileHelper extends IService {
             this.log.log(LogLevel.IMPORTANT, `Trying to read config at: ${cfgPath}`);
             fileContent = await this.getConfigFileContent(cfgPath);
 
-            // apply defaults
-            const parsed = commentJson.assign(
+            // apply defaults, then the user's own config on top
+            let parsed = commentJson.assign(
                 new Config(),
                 parseConfigFileContent(fileContent),
             );
+
+            // then ServerZ's shared config on top of that - it's the single source of
+            // truth for anything it also uses to actually run the server, so it always
+            // wins over whatever's in server-manager.json for these specific fields.
+            const shared = await this.readSharedConfig();
+            if (shared) {
+                parsed = commentJson.assign(parsed, shared);
+                this.log.log(LogLevel.IMPORTANT, 'Merged shared config from ServerZ');
+            }
+
             const configErrors = validateConfig(parsed);
             if (configErrors?.length) {
                 this.logConfigErrors(configErrors);

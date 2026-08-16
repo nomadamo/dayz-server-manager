@@ -33,6 +33,11 @@ export class ConfigWatcher extends IService {
 
     public async watch(cb: ConfigCallback): Promise<Config> {
         const cfgPath = this.configFileHelper.getConfigFilePath();
+        // also watch ServerZ's generated shared config (if any), so a restart there
+        // (which regenerates it) triggers a reload here too, same as editing
+        // server-manager.json directly does.
+        const sharedCfgPath = process.env.SERVERZ_SHARED_CONFIG_PATH;
+        const watchPaths = sharedCfgPath ? [cfgPath, sharedCfgPath] : [cfgPath];
 
         const config = await this.configFileHelper.readConfig();
         if (!config) {
@@ -44,7 +49,7 @@ export class ConfigWatcher extends IService {
             .digest('hex');
 
         this.configFileWatcher = this.chokidar.watch(
-            cfgPath,
+            watchPaths,
         ).on(
             'change',
             /* istanbul ignore next */
