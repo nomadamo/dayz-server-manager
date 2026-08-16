@@ -8,7 +8,6 @@ import { MissionFiles } from '../services/mission-files';
 import { Monitor } from '../services/monitor';
 import { SystemReporter } from '../services/system-reporter';
 import { RCON } from '../services/rcon';
-import { SteamCMD } from '../services/steamcmd';
 import { CommandMap, Request, RequestTemplate, Response, ResponsePartHandler } from '../types/interface';
 import { IService } from '../types/service';
 import { LogLevel } from '../util/logger';
@@ -37,7 +36,6 @@ export class Interface extends IService {
         private systemReporter: SystemReporter,
         private serverDetector: ServerDetector,
         private metrics: Metrics,
-        private steamCmd: SteamCMD,
         private logReader: LogReader,
         private backup: Backups,
         private missionFiles: MissionFiles,
@@ -272,24 +270,20 @@ export class Interface extends IService {
                     }
                 },
             })],
+            // ServerZ owns mod/server updates now, and only checks for them at its own
+            // boot - there's no "update now while running" to trigger anymore. The
+            // closest equivalent is a restart, which re-runs that boot sequence.
             ['updatemods', RequestTemplate.build({
                 method: 'post',
                 level: 'manage',
                 disableDiscord: true,
-                params: [{ name: 'validate', optional: true, parse: parseBoolean }, { name: 'force', optional: true, parse: parseBoolean }],
-                action: (req, params) => this.steamCmd.updateAllMods({
-                    validate: params?.validate,
-                    force: params?.force,
-                }),
+                action: () => this.monitor.killServer(),
             })],
             ['updateserver', RequestTemplate.build({
                 method: 'post',
                 level: 'manage',
                 disableDiscord: true,
-                params: [{ name: 'validate', optional: true, parse: parseBoolean }],
-                action: (req, params) => this.steamCmd.updateServer({
-                    validate: params?.validate,
-                }),
+                action: () => this.monitor.killServer(),
             })],
             ['backup', RequestTemplate.build({
                 method: 'post',

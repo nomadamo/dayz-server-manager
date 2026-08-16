@@ -8,7 +8,6 @@ import { LoggerFactory } from './loggerfactory';
 import { FSAPI, InjectionTokens } from '../util/apis';
 import { EventBus } from '../control/event-bus';
 import { InternalEventTypes } from '../types/events';
-import { ServerStarter } from './server-starter';
 import { ServerDetector } from './server-detector';
 import { Paths } from './paths';
 import * as path from 'path';
@@ -39,7 +38,6 @@ export class Monitor extends IStatefulService {
         private manager: Manager,
         private eventBus: EventBus,
         private processes: Processes,
-        private serverStarter: ServerStarter,
         private serverDetector: ServerDetector,
         private paths: Paths,
         @inject(InjectionTokens.fs) private fs: FSAPI,
@@ -82,12 +80,30 @@ export class Monitor extends IStatefulService {
         return this.internalServerState;
     }
 
-    public async killServer(force?: boolean): Promise<boolean> {
+    /**
+     * ServerZ (not this process) owns starting/stopping the actual DayZ server, so
+     * "restart" here means signalling ServerZ's own process to shut down gracefully -
+     * that already cascades through its existing SIGTERM handling into a full restart
+     * via the container's restart policy. `force` is unused: there's no softer/harder
+     * distinction to make here anymore, ServerZ's own shutdown handling is what decides.
+     */
+    public async killServer(_force?: boolean): Promise<boolean> {
         if (this.internalServerState === ServerState.STARTING || this.serverState === ServerState.STARTED) {
             this.internalServerState = ServerState.STOPPING;
         }
 
-        return this.serverStarter.killServer(force);
+        if (!process.ppid) {
+            this.log.log(LogLevel.ERROR, 'No parent process found - not running as a ServerZ child? Cannot restart.');
+            return false;
+        }
+
+        try {
+            process.kill(process.ppid, 'SIGTERM');
+            return true;
+        } catch (e) {
+            this.log.log(LogLevel.ERROR, `Failed to signal parent process ${process.ppid}`, e);
+            return false;
+        }
     }
 
     public async start(): Promise<void> {
@@ -132,63 +148,29 @@ export class Monitor extends IStatefulService {
         this.log.log(LogLevel.IMPORTANT, 'Stoping to watch server');
     }
 
+    /**
+     * Observation only - ServerZ owns starting the server (and restarting it on crash,
+     * via its own exitWithChild + the container's restart policy), so this no longer
+     * spawns anything itself. It just tracks/reports state and watches for a stuck
+     * (running-but-frozen) server.
+     */
     private async tick(): Promise<void> {
         if (this.manager.config.disableServerMonitoring || !this.manager.initDone) {
             return;
         }
 
         try {
-            let needsRestart = true;
-
-            // User locked the server manually
-            if (needsRestart && this.manager.config.lockServerRestart) {
-                if (!this.manager.config.disableServerLockLogs) {
-                    this.log.log(LogLevel.IMPORTANT, 'Detected server lock in config. Skipping server check');
-                }
-                needsRestart = false;
-            }
-
-            // User locked the server manually via file
-            if (needsRestart) {
-                try {
-                    await this.fs.promises.access(this.lockPath);
-                    if (!this.manager.config.disableServerLockLogs) {
-                        this.log.log(LogLevel.IMPORTANT, 'Detected manual server lockfile. Skipping server check');
-                    }
-                    needsRestart = false;
-                } catch {}
-            }
-
-            // restart locked
-            if (needsRestart && this.restartLock) {
-                if (!this.manager.config.disableServerLockLogs) {
-                    this.log.log(LogLevel.IMPORTANT, 'Detected server restart lock state. Skipping server check');
-                }
-                needsRestart = false;
-            }
-
-            // server running
             if (await this.serverDetector.isServerRunning()) {
-                needsRestart = false;
                 this.initialStart = false;
                 this.log.log(LogLevel.INFO, 'Server running...');
                 this.internalServerState = ServerState.STARTED;
+
+                if (!this.manager.config.disableStuckCheck) {
+                    await this.checkPossibleStuckState();
+                }
             } else {
                 this.internalServerState = ServerState.STOPPED;
-            }
-
-            if (needsRestart) {
-                this.log.log(LogLevel.IMPORTANT, 'Server not found. Starting...');
-                this.internalServerState = ServerState.STARTING;
-                await this.serverStarter.startServer(this.initialStart);
-                this.log.log(LogLevel.IMPORTANT, 'Server start initiated...');
                 this.lastServerUsages = [];
-                this.initialStart = false;
-
-                // give the server a minute to start up
-                this.skipLoop(60000);
-            } else if (!this.manager.config.disableStuckCheck) {
-                await this.checkPossibleStuckState();
             }
         } catch (e) {
             this.log.log(LogLevel.ERROR, 'Error during server monitor loop', e);

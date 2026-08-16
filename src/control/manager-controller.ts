@@ -7,9 +7,7 @@ import { Requirements } from '../services/requirements';
 import { ConfigWatcher } from '../services/config-watcher';
 import { container, injectable, Lifecycle, registry, singleton } from 'tsyringe';
 import { LoggerFactory } from '../services/loggerfactory';
-import { ServerDetector } from '../services/server-detector';
 import { IngameReport } from '../services/ingame-report';
-import { SteamCMD } from '../services/steamcmd';
 import { InjectionTokens } from '../util/apis';
 import * as fsModule from 'fs';
 import * as httpsModule from 'https';
@@ -133,8 +131,6 @@ export class ManagerController {
         loggerFactory: LoggerFactory,
         private configWatcher: ConfigWatcher,
         private manager: Manager,
-        private serverDetector: ServerDetector,
-        private steamCmd: SteamCMD,
         private ingameReport: IngameReport,
         private requirements: Requirements,
         private discord: DiscordBot,
@@ -291,43 +287,18 @@ export class ManagerController {
         );
     }
 
+    /**
+     * ServerZ owns installing/updating the server and mods entirely now - this used to
+     * also do all of that via SteamCMD before handing off to ServerStarter. All that's
+     * left here is installing the webui's own bundled companion mod (not a SteamCMD
+     * concern, just a file copy), which the player/vehicle-map feature depends on.
+     *
+     * Note: for that mod to actually be loaded by the game, its folder name needs to be
+     * included in ServerZ's own mod list too (see IngameReport.getServerMods()) - that's
+     * a config step on ServerZ's side, not something this process can do for it.
+     */
     private async initialSetup(): Promise<void> {
-
-        if (await this.serverDetector.isServerRunning()) {
-            this.log.log(LogLevel.IMPORTANT, 'Skipping initial SteamCMD check because the server is already running');
-            return;
-        }
-
-        this.log.log(LogLevel.IMPORTANT, 'Initially checking SteamCMD, Server Installation and Mods. Please wait. This may take some minutes...');
-        const steamCmdOk = await this.steamCmd.checkSteamCmd();
-        if (!steamCmdOk) {
-            throw new Error('SteamCMD init failed');
-        }
-
-        // ingame report mod
         await this.ingameReport.installMod();
-        // Server
-        if (!await this.steamCmd.checkServer() || this.manager.config.updateServerOnStartup) {
-            if (!await this.steamCmd.updateServer()) {
-                throw new Error('Server installation failed');
-            }
-        }
-        if (!await this.steamCmd.checkServer()) {
-            throw new Error('Server installation failed. Server executable not found. Check the steam cmd logs and your settings for wrong paths or wrong executable names');
-        }
-
-        // Mods
-        if (!await this.steamCmd.checkMods() || this.manager.config.updateModsOnStartup) {
-            if (!await this.steamCmd.updateAllMods()) {
-                throw new Error('Updating Mods failed');
-            }
-        }
-        if (!await this.steamCmd.installMods()) {
-            throw new Error('Installing Mods failed');
-        }
-        if (!await this.steamCmd.checkMods()) {
-            throw new Error('Mod installation failed');
-        }
     }
 
 }
