@@ -48,19 +48,25 @@ export class ConfigWatcher extends IService {
             .update(JSON.stringify(config))
             .digest('hex');
 
+        const onFileEvent = /* istanbul ignore next */ async () => { // NOSONAR
+            // usually file "headers" are saved before content is done
+            // waiting a small amount of time prevents reading RBW errors
+            await new Promise((r) => setTimeout(r, this.changeDetectionDelay));
+
+            await this.checkForChange(cb);
+        };
+
         this.configFileWatcher = this.chokidar.watch(
             watchPaths,
         ).on(
             'change',
-            /* istanbul ignore next */
-            async () => { // NOSONAR
-
-                // usually file "headers" are saved before content is done
-                // waiting a small amount of time prevents reading RBW errors
-                await new Promise((r) => setTimeout(r, this.changeDetectionDelay));
-
-                await this.checkForChange(cb);
-            },
+            onFileEvent,
+        ).on(
+            // ServerZ's shared config doesn't exist yet when watching starts (this
+            // process is deliberately started before ServerZ generates it) - its
+            // first appearance is an 'add' event, not 'change'.
+            'add',
+            onFileEvent,
         );
 
         return config;
