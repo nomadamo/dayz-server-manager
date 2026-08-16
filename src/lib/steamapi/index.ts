@@ -1,5 +1,0 @@
-export type { SteamAPI } from "./types.js"
-export { LocalSteamAPI } from "./local-adapter.js"
-export { RemoteSteamAPI, type RemoteSteamAPIOptions, type RemoteSteamAPITransport } from "./remote-adapter.js"
-export { createSteamAPI, type CreateSteamAPIOptions } from "./factory.js"
-export * from "../depot-daemon-shared/depot-daemon-api.js"
